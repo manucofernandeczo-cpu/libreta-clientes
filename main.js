@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -15,6 +15,7 @@ function writeData(data) {
 }
 
 ipcMain.handle('load', () => readData());
+ipcMain.handle('copy', (_e, t) => { clipboard.writeText(String(t)); return true; });
 ipcMain.handle('save', (_e, data) => { writeData(data); return true; });
 ipcMain.on('save-sync', (e, data) => { writeData(data); e.returnValue = true; });
 

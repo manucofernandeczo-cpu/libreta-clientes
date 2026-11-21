@@ -15,3 +15,4 @@ El instalador queda en la carpeta `dist/`.
 - **Buscador**: filtra mientras escribís; Enter abre el primer resultado.
 - Cada hoja arranca con un ítem (•), pero podés borrarlo y escribir libre.
 - Hoja nueva: se crea sola al llenarse, o con Enter en una línea vacía al final de la hoja, o con Ctrl+Enter.
+- **Copiar**: copia al portapapeles el nombre y todo el contenido del cliente (todas sus hojas) como texto.

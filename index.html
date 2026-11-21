@@ -50,6 +50,7 @@ header h2{flex:1;margin:0;font-size:20px;white-space:nowrap;overflow:hidden;text
 <main>
   <header id="head" hidden><h2 id="title"></h2>
     <button id="ren" class="ghost">Editar nombre</button>
+    <button id="copy" class="ghost">Copiar</button>
     <button id="del" class="danger">Eliminar cliente</button></header>
   <div id="sheets"><div class="hint">Elegí un cliente de la lista<br>o creá uno nuevo para empezar.</div></div>
 </main>
@@ -105,6 +106,15 @@ $('#add').onclick=async()=>{
 $('#ren').onclick=async()=>{
   const name=await ask({title:'Editar nombre',input:true,value:cur.name,ok:'Guardar'});
   if(!name)return;cur.name=name;$('#title').textContent=name;renderList();save();
+};
+$('#copy').onclick=async()=>{
+  const parts=[...document.querySelectorAll('.body')].map(b=>[...b.children].map(el=>{
+    if(el.tagName==='UL'||el.tagName==='OL')return [...el.children].map(li=>'\u2022 '+li.innerText.replace(/\n+$/,'')).join('\n');
+    return el.innerText.replace(/\n+$/,'');
+  }).join('\n'));
+  const text=cur.name+'\n\n'+parts.filter(t=>t.trim()).join('\n\n');
+  await window.api.copy(text.trim());
+  const b=$('#copy');b.textContent='\u00a1Copiado!';setTimeout(()=>b.textContent='Copiar',1500);
 };
 $('#del').onclick=async()=>{
   const ok=await ask({title:'Eliminar cliente',text:`Se va a borrar "${cur.name}" con todas sus hojas. Esto no se puede deshacer.`,ok:'Sí, eliminar',danger:true});
