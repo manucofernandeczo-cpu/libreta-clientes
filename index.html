@@ -32,6 +32,7 @@ header h2{flex:1;margin:0;font-size:20px;white-space:nowrap;overflow:hidden;text
 .body{height:1011px;overflow:hidden;font:20px/32px Georgia,"Times New Roman",serif;outline:none;word-break:break-word}
 .body ul{margin:0;padding-left:26px}
 .body div,.body p{margin:0}
+.body [data-fecha]:not([data-fecha=""])::before{content:attr(data-fecha);float:right;margin-left:12px;font:12px/32px "Segoe UI",system-ui,sans-serif;color:#7a8791;user-select:none}
 .num{position:absolute;right:20px;bottom:18px;font-size:12px;color:#8a97a2}
 .modal-bg{position:fixed;inset:0;background:rgba(10,16,20,.6);display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:12px;padding:22px;width:380px;display:flex;flex-direction:column;gap:14px}
@@ -107,10 +108,11 @@ $('#ren').onclick=async()=>{
   const name=await ask({title:'Editar nombre',input:true,value:cur.name,ok:'Guardar'});
   if(!name)return;cur.name=name;$('#title').textContent=name;renderList();save();
 };
+const fe=e=>e.dataset&&e.dataset.fecha?' \u2014 '+e.dataset.fecha:'';
 $('#copy').onclick=async()=>{
   const parts=[...document.querySelectorAll('.body')].map(b=>[...b.children].map(el=>{
-    if(el.tagName==='UL'||el.tagName==='OL')return [...el.children].map(li=>'\u2022 '+li.innerText.replace(/\n+$/,'')).join('\n');
-    return el.innerText.replace(/\n+$/,'');
+    if(el.tagName==='UL'||el.tagName==='OL')return [...el.children].map(li=>'\u2022 '+li.innerText.replace(/\n+$/,'')+fe(li)).join('\n');
+    return el.innerText.replace(/\n+$/,'')+fe(el);
   }).join('\n'));
   const text=cur.name+'\n\n'+parts.filter(t=>t.trim()).join('\n\n');
   await window.api.copy(text.trim());
@@ -137,7 +139,8 @@ function makePage(html){
   const p=document.createElement('div');p.className='page';
   p.innerHTML='<div class="body" contenteditable="true" spellcheck="true"></div><span class="num"></span>';
   const b=p.querySelector('.body');b.innerHTML=html||BLANK;
-  b.addEventListener('input',()=>{normalize(b);reflow(b);save()});
+  b.querySelectorAll('li, :scope > div, :scope > p').forEach(el=>{if(el.textContent.trim()!==''&&!el.hasAttribute('data-fecha'))el.setAttribute('data-fecha','')});
+  b.addEventListener('input',()=>{normalize(b);stamp(b);reflow(b);if(!dropIfEmpty(b))save();else save()});
   b.addEventListener('keydown',onKey);
   return p;
 }
@@ -145,6 +148,33 @@ function renumber(){const n=document.querySelectorAll('.page');n.forEach((p,i)=>
 function normalize(b){
   [...b.childNodes].forEach(n=>{if(n.nodeType===3&&n.textContent.trim()){const d=document.createElement('div');n.replaceWith(d);d.appendChild(n)}});
   if(!b.children.length)b.innerHTML='<div><br></div>';
+}
+function stamp(b){
+  const hoy=new Date().toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  b.querySelectorAll('li, :scope > div, :scope > p').forEach(el=>{
+    const has=el.textContent.replace(/\u200b/g,'').trim()!=='';
+    if(!has){if(el.hasAttribute('data-fecha'))el.removeAttribute('data-fecha')}
+    else if(!el.hasAttribute('data-fecha'))el.setAttribute('data-fecha',hoy);
+  });
+}
+function prevBody(b){
+  let p=b.parentElement.previousElementSibling;
+  while(p&&!p.classList.contains('page'))p=p.previousElementSibling;
+  return p&&p.querySelector('.body');
+}
+function focusEnd(b){
+  b.focus();
+  const all=b.querySelectorAll('li, :scope > div, :scope > p');
+  const last=all[all.length-1]||b;
+  const r=document.createRange();r.selectNodeContents(last);r.collapse(last.textContent==='');
+  const s=getSelection();s.removeAllRanges();s.addRange(r);
+  b.parentElement.scrollIntoView({block:'center'});
+}
+function dropIfEmpty(b){
+  const prev=prevBody(b);
+  if(!prev||b.textContent.trim()!=='')return false;
+  b.parentElement.remove();renumber();focusEnd(prev);
+  return true;
 }
 function nextBody(b,create){
   let p=b.parentElement.nextElementSibling;
@@ -180,6 +210,7 @@ function newPageFrom(b){
 }
 function onKey(e){
   const b=e.currentTarget;
+  if(e.key==='Backspace'&&dropIfEmpty(b)){e.preventDefault();save();return}
   if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();newPageFrom(b);return}
   if(e.key==='Enter'&&!e.shiftKey){
     const s=getSelection();if(!s.rangeCount)return;
