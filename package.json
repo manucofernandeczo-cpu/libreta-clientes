@@ -1,6 +1,6 @@
 {
   "name": "libreta-clientes",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Libreta de clientes con una hoja por cliente",
   "main": "main.js",
   "scripts": {

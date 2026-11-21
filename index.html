@@ -33,6 +33,15 @@ header h2{flex:1;margin:0;font-size:20px;white-space:nowrap;overflow:hidden;text
 .body ul{margin:0;padding-left:26px}
 .body div,.body p{margin:0}
 .body [data-fecha]:not([data-fecha=""])::before{content:attr(data-fecha);float:right;margin-left:12px;font:12px/32px "Segoe UI",system-ui,sans-serif;color:#7a8791;user-select:none}
+.icon{padding:8px 10px;display:flex;align-items:center}
+button:disabled{opacity:.4;cursor:default}
+.trashbtn{display:flex;align-items:center;gap:8px;background:var(--side2);color:var(--txt);text-align:left}
+.modal.wide{width:460px}
+.tlist{max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.trow{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #d5dde3;border-radius:8px}
+.tinfo{flex:1;display:flex;flex-direction:column;min-width:0}
+.tinfo strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tinfo span{font-size:13px;color:#5d6b76}
 .num{position:absolute;right:20px;bottom:18px;font-size:12px;color:#8a97a2}
 .modal-bg{position:fixed;inset:0;background:rgba(10,16,20,.6);display:flex;align-items:center;justify-content:center}
 .modal{background:#fff;border-radius:12px;padding:22px;width:380px;display:flex;flex-direction:column;gap:14px}
@@ -47,9 +56,12 @@ header h2{flex:1;margin:0;font-size:20px;white-space:nowrap;overflow:hidden;text
   <input id="q" class="search" placeholder="Buscar cliente" autocomplete="off">
   <button id="add" class="primary">+ Nuevo cliente</button>
   <div id="list"></div>
+  <button id="trash" class="trashbtn"></button>
 </aside>
 <main>
   <header id="head" hidden><h2 id="title"></h2>
+    <button id="undo" class="ghost icon" title="Deshacer (Ctrl+Z)" aria-label="Deshacer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button id="redo" class="ghost icon" title="Rehacer (Ctrl+Y)" aria-label="Rehacer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
     <button id="ren" class="ghost">Editar nombre</button>
     <button id="copy" class="ghost">Copiar</button>
     <button id="del" class="danger">Eliminar cliente</button></header>
@@ -119,11 +131,13 @@ $('#copy').onclick=async()=>{
   const b=$('#copy');b.textContent='\u00a1Copiado!';setTimeout(()=>b.textContent='Copiar',1500);
 };
 $('#del').onclick=async()=>{
-  const ok=await ask({title:'Eliminar cliente',text:`Se va a borrar "${cur.name}" con todas sus hojas. Esto no se puede deshacer.`,ok:'Sí, eliminar',danger:true});
+  const ok=await ask({title:'Eliminar cliente',text:`"${cur.name}" se va a mover a la papelera con todas sus hojas. Podés restaurarlo desde ahí.`,ok:'Sí, eliminar',danger:true});
   if(!ok)return;
+  collect();
+  data.trash.push({...cur,deletedAt:Date.now()});
   data.clients=data.clients.filter(c=>c.id!==cur.id);cur=null;
-  window.api.save(data);$('#head').hidden=true;
-  $('#sheets').innerHTML='<div class="hint">Cliente eliminado.<br>Elegí otro de la lista.</div>';renderList();
+  window.api.save(data);$('#head').hidden=true;updTrash();
+  $('#sheets').innerHTML='<div class="hint">Cliente movido a la papelera.<br>Elegí otro de la lista.</div>';renderList();
 };
 
 /* ---------- hojas ---------- */
@@ -132,7 +146,7 @@ function open(id,focus){
   $('#head').hidden=false;$('#title').textContent=cur.name;
   const box=$('#sheets');box.innerHTML='';box.scrollTop=0;
   cur.pages.forEach(h=>box.appendChild(makePage(h)));
-  renumber();renderList();
+  renumber();renderList();resetHist();
   if(focus)focusStart(box.querySelector('.body'));
 }
 function makePage(html){
@@ -140,7 +154,8 @@ function makePage(html){
   p.innerHTML='<div class="body" contenteditable="true" spellcheck="true"></div><span class="num"></span>';
   const b=p.querySelector('.body');b.innerHTML=html||BLANK;
   b.querySelectorAll('li, :scope > div, :scope > p').forEach(el=>{if(el.textContent.trim()!==''&&!el.hasAttribute('data-fecha'))el.setAttribute('data-fecha','')});
-  b.addEventListener('input',()=>{normalize(b);stamp(b);reflow(b);if(!dropIfEmpty(b))save();else save()});
+  b.addEventListener('beforeinput',onBefore);
+  b.addEventListener('input',e=>{normalize(b);stamp(b);reflow(b);dropIfEmpty(b);save();record(e.inputType)});
   b.addEventListener('keydown',onKey);
   return p;
 }
@@ -206,26 +221,94 @@ function reflow(b){
   }
 }
 function newPageFrom(b){
-  const nb=nextBody(b,true);focusStart(nb);save();
+  const nb=nextBody(b,true);focusStart(nb);save();snap();
 }
 function onKey(e){
   const b=e.currentTarget;
-  if(e.key==='Backspace'&&dropIfEmpty(b)){e.preventDefault();save();return}
-  if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();newPageFrom(b);return}
+  if((e.ctrlKey||e.metaKey)&&!e.altKey){const k=e.key.toLowerCase();if(k==='z'){e.preventDefault();e.shiftKey?redo():undo();return}if(k==='y'){e.preventDefault();redo();return}}
+  if(e.key==='Backspace'&&b.textContent.trim()===''&&prevBody(b)){e.preventDefault();flush();dropIfEmpty(b);save();snap();return}
+  if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();flush();newPageFrom(b);return}
   if(e.key==='Enter'&&!e.shiftKey){
     const s=getSelection();if(!s.rangeCount)return;
     let n=s.anchorNode;n=n.nodeType===3?n.parentElement:n;
     const blk=n.closest('li')||n.closest('.body > *');
     const lastBlk=b.lastElementChild&&(b.lastElementChild.tagName==='UL'?b.lastElementChild.lastElementChild:b.lastElementChild);
     if(blk&&blk===lastBlk&&blk.textContent.trim()===''&&b.children.length>0&&(b.children.length>1||b.firstElementChild.children.length>1)){
-      e.preventDefault();
+      e.preventDefault();flush();
       const ul=blk.parentElement;blk.remove();if(ul.tagName==='UL'&&!ul.children.length)ul.remove();
       newPageFrom(b);
     }
   }
 }
 
+/* ---------- deshacer / rehacer ---------- */
+let hist=[],hi=-1,snapT=null;
+const TYPING=['insertText','deleteContentBackward','deleteContentForward','insertCompositionText'];
+const pagesHtml=()=>JSON.stringify([...document.querySelectorAll('.body')].map(b=>b.innerHTML));
+function updUndo(){$('#undo').disabled=!(hi>0||snapT);$('#redo').disabled=!(hi<hist.length-1)}
+function resetHist(){clearTimeout(snapT);snapT=null;hist=[pagesHtml()];hi=0;updUndo()}
+function snap(){
+  const s=pagesHtml();if(hist[hi]===s){updUndo();return}
+  hist=hist.slice(0,hi+1);hist.push(s);if(hist.length>200)hist.shift();hi=hist.length-1;updUndo();
+}
+function flush(){if(snapT){clearTimeout(snapT);snapT=null;snap()}}
+function record(t){
+  clearTimeout(snapT);snapT=null;
+  if(TYPING.includes(t)){snapT=setTimeout(()=>{snapT=null;snap()},700);updUndo()}else snap();
+}
+function onBefore(e){
+  if(/^history/.test(e.inputType)){e.preventDefault();return}
+  if(!TYPING.includes(e.inputType))flush();
+}
+function restore(to,from){
+  const pages=JSON.parse(to),old=JSON.parse(from),box=$('#sheets');
+  box.innerHTML='';pages.forEach(x=>box.appendChild(makePage(x)));renumber();
+  let i=pages.findIndex((p,k)=>p!==old[k]);if(i<0)i=pages.length-1;
+  focusEnd(box.querySelectorAll('.body')[Math.min(i,pages.length-1)]);
+  save();updUndo();
+}
+function undo(){flush();if(hi<=0)return;hi--;restore(hist[hi],hist[hi+1])}
+function redo(){if(hi>=hist.length-1)return;hi++;restore(hist[hi],hist[hi-1])}
+['undo','redo'].forEach(id=>{$('#'+id).onmousedown=e=>e.preventDefault()});
+$('#undo').onclick=undo;$('#redo').onclick=redo;
+
+/* ---------- papelera ---------- */
+const TRASH_SVG='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/></svg>';
+function updTrash(){$('#trash').innerHTML=TRASH_SVG+' Papelera ('+data.trash.length+')'}
+function openTrash(){
+  const bg=document.createElement('div');bg.className='modal-bg';
+  bg.innerHTML='<div class="modal wide" role="dialog"><h3>Papelera</h3><div class="tlist"></div><div class="row"><button class="danger" id="tempty">Vaciar papelera</button><button class="ghost" id="tclose">Cerrar</button></div></div>';
+  const list=bg.querySelector('.tlist'),empty=bg.querySelector('#tempty');
+  const draw=()=>{
+    list.innerHTML='';empty.disabled=!data.trash.length;
+    if(!data.trash.length){list.innerHTML='<p>La papelera está vacía.</p>';return}
+    data.trash.slice().reverse().forEach(c=>{
+      const r=document.createElement('div');r.className='trow';
+      const info=document.createElement('div');info.className='tinfo';
+      const n=document.createElement('strong');n.textContent=c.name;
+      const d=document.createElement('span');
+      d.textContent='Eliminado el '+new Date(c.deletedAt).toLocaleDateString('es-AR')+', '+c.pages.length+(c.pages.length===1?' hoja':' hojas');
+      info.append(n,d);
+      const b=document.createElement('button');b.className='primary';b.textContent='Restaurar';
+      b.onclick=()=>{
+        data.trash=data.trash.filter(x=>x!==c);
+        const {deletedAt,...rest}=c;data.clients.push(rest);
+        window.api.save(data);updTrash();renderList();bg.remove();open(rest.id);
+      };
+      r.append(info,b);list.appendChild(r);
+    });
+  };
+  empty.onclick=async()=>{
+    const ok=await ask({title:'Vaciar papelera',text:`Se van a borrar definitivamente ${data.trash.length} cliente(s) con todos sus datos. Esto no se puede deshacer.`,ok:'Sí, vaciar',danger:true});
+    if(!ok)return;data.trash=[];window.api.save(data);updTrash();draw();
+  };
+  bg.querySelector('#tclose').onclick=()=>bg.remove();
+  bg.onkeydown=e=>{if(e.key==='Escape')bg.remove()};
+  draw();document.body.appendChild(bg);bg.querySelector('#tclose').focus();
+}
+$('#trash').onclick=openTrash;
+
 /* ---------- inicio ---------- */
-window.api.load().then(d=>{data=d&&d.clients?d:{clients:[]};renderList()});
+window.api.load().then(d=>{data=d&&d.clients?d:{clients:[]};data.trash=data.trash||[];renderList();updTrash();updUndo()});
 </script>
 </body></html>

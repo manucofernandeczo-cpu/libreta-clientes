@@ -17,3 +17,5 @@ El instalador queda en la carpeta `dist/`.
 - Hoja nueva: se crea sola al llenarse, o con Enter en una línea vacía al final de la hoja, o con Ctrl+Enter.
 - **Copiar**: copia al portapapeles el nombre y todo el contenido del cliente (todas sus hojas) como texto.
 - Cada ítem nuevo guarda la fecha en que lo anotaste (a la derecha). Si borrás todo el texto de una hoja (que no sea la primera), la hoja desaparece.
+- **Papelera** (abajo a la izquierda): los clientes eliminados van ahí con todos sus datos; podés restaurarlos o vaciar la papelera.
+- **Flechas deshacer/rehacer** arriba (o Ctrl+Z / Ctrl+Y) para recuperar lo que borres sin querer en las hojas.
