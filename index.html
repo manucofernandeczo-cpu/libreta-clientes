@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Libreta de Clientes</title>
+<style>
+:root{--desk:#3a4650;--ink:#1f2a33;--side:#1f2a33;--side2:#2b3945;--paper:#fffefb;--rule:#cfdcea;--margin:#e7a3a3;--accent:#2f7d6d;--danger:#b3412f;--txt:#e8eef3}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink)}
+body{display:flex;background:var(--desk)}
+aside{width:290px;background:var(--side);color:var(--txt);display:flex;flex-direction:column;padding:16px;gap:12px}
+aside h1{font-size:18px;margin:0 0 4px;font-weight:600}
+input.search{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #3d4d5b;background:var(--side2);color:var(--txt);font-size:15px}
+input.search:focus,.modal input:focus{outline:2px solid var(--accent)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:0;padding:9px 14px}
+button:focus-visible{outline:2px solid #fff;outline-offset:2px}
+.primary{background:var(--accent);color:#fff}
+.ghost{background:transparent;border:1px solid #cdd6dd;color:var(--ink)}
+.danger{background:var(--danger);color:#fff}
+#list{flex:1;overflow:auto;display:flex;flex-direction:column;gap:2px}
+#list button{text-align:left;background:transparent;color:var(--txt);padding:10px 12px;border-radius:6px}
+#list button:hover{background:var(--side2)}
+#list button.on{background:var(--accent);color:#fff}
+.empty{color:#9fb0bd;font-size:14px;padding:8px 4px}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+header{display:flex;align-items:center;gap:10px;padding:14px 24px;background:#e9edf0}
+header h2{flex:1;margin:0;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sheets{flex:1;overflow:auto;padding:28px 0;display:flex;flex-direction:column;align-items:center;gap:28px}
+.hint{color:#c9d3da;margin:auto;font-size:17px;text-align:center;line-height:1.5}
+.page{position:relative;width:794px;height:1123px;flex:none;background:var(--paper);padding:56px 56px 56px 84px;box-shadow:0 4px 18px rgba(0,0,0,.35);
+ background-image:repeating-linear-gradient(to bottom,transparent 0 31px,var(--rule) 31px 32px);background-position:0 56px;background-repeat:repeat-y}
+.page::before{content:"";position:absolute;left:66px;top:0;bottom:0;width:1px;background:var(--margin)}
+.body{height:1011px;overflow:hidden;font:20px/32px Georgia,"Times New Roman",serif;outline:none;word-break:break-word}
+.body ul{margin:0;padding-left:26px}
+.body div,.body p{margin:0}
+.num{position:absolute;right:20px;bottom:18px;font-size:12px;color:#8a97a2}
+.modal-bg{position:fixed;inset:0;background:rgba(10,16,20,.6);display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:12px;padding:22px;width:380px;display:flex;flex-direction:column;gap:14px}
+.modal h3{margin:0;font-size:18px}.modal p{margin:0;line-height:1.4}
+.modal input{padding:10px;border:1px solid #b9c4cc;border-radius:8px;font-size:16px}
+.modal .row{display:flex;justify-content:flex-end;gap:8px}
+@media print{aside,header{display:none}.page{box-shadow:none}}
+</style></head>
+<body>
+<aside>
+  <h1>Clientes</h1>
+  <input id="q" class="search" placeholder="Buscar cliente" autocomplete="off">
+  <button id="add" class="primary">+ Nuevo cliente</button>
+  <div id="list"></div>
+</aside>
+<main>
+  <header id="head" hidden><h2 id="title"></h2>
+    <button id="ren" class="ghost">Editar nombre</button>
+    <button id="del" class="danger">Eliminar cliente</button></header>
+  <div id="sheets"><div class="hint">Elegí un cliente de la lista<br>o creá uno nuevo para empezar.</div></div>
+</main>
+<script>
+let data={clients:[]},cur=null,saveT=null;
+const $=s=>document.querySelector(s);
+const BLANK='<ul><li><br></li></ul>';
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>{collect();window.api.save(data)},400)}
+function collect(){
+  if(!cur)return;
+  cur.pages=[...document.querySelectorAll('.body')].map(b=>b.innerHTML);
+}
+window.addEventListener('beforeunload',()=>{collect();window.api.saveSync(data)});
+
+/* ---------- modal ---------- */
+function ask({title,text,input,value,ok,danger}){
+  return new Promise(res=>{
+    const bg=document.createElement('div');bg.className='modal-bg';
+    bg.innerHTML=`<div class="modal" role="dialog"><h3></h3>${text?'<p></p>':''}${input?'<input maxlength="80">':''}<div class="row"><button class="ghost">Cancelar</button><button class="${danger?'danger':'primary'}"></button></div></div>`;
+    bg.querySelector('h3').textContent=title;
+    if(text)bg.querySelector('p').textContent=text;
+    const inp=bg.querySelector('input');if(inp)inp.value=value||'';
+    const [b1,b2]=bg.querySelectorAll('button');b2.textContent=ok;
+    const done=v=>{bg.remove();res(v)};
+    b1.onclick=()=>done(null);
+    b2.onclick=()=>done(inp?(inp.value.trim()||null):true);
+    bg.onkeydown=e=>{if(e.key==='Escape')done(null);if(e.key==='Enter'){e.preventDefault();b2.click()}};
+    document.body.appendChild(bg);(inp||b1).focus();inp&&inp.select();
+  });
+}
+
+/* ---------- lista y buscador ---------- */
+function renderList(){
+  const q=$('#q').value.trim().toLowerCase();
+  const items=data.clients.filter(c=>c.name.toLowerCase().includes(q)).sort((a,b)=>a.name.localeCompare(b.name,'es'));
+  const box=$('#list');box.innerHTML='';
+  if(!items.length){box.innerHTML='<div class="empty">'+(data.clients.length?'Sin resultados.':'Todavía no hay clientes.')+'</div>';return}
+  items.forEach(c=>{const b=document.createElement('button');b.textContent=c.name;
+    if(cur&&cur.id===c.id)b.className='on';b.onclick=()=>open(c.id);box.appendChild(b)});
+}
+$('#q').oninput=renderList;
+$('#q').onkeydown=e=>{if(e.key==='Enter'){const b=$('#list button');if(b)b.click()}};
+
+/* ---------- clientes ---------- */
+$('#add').onclick=async()=>{
+  const name=await ask({title:'Nuevo cliente',input:true,ok:'Crear'});
+  if(!name)return;
+  const c={id:uid(),name,pages:[BLANK]};data.clients.push(c);
+  window.api.save(data);$('#q').value='';open(c.id,true);
+};
+$('#ren').onclick=async()=>{
+  const name=await ask({title:'Editar nombre',input:true,value:cur.name,ok:'Guardar'});
+  if(!name)return;cur.name=name;$('#title').textContent=name;renderList();save();
+};
+$('#del').onclick=async()=>{
+  const ok=await ask({title:'Eliminar cliente',text:`Se va a borrar "${cur.name}" con todas sus hojas. Esto no se puede deshacer.`,ok:'Sí, eliminar',danger:true});
+  if(!ok)return;
+  data.clients=data.clients.filter(c=>c.id!==cur.id);cur=null;
+  window.api.save(data);$('#head').hidden=true;
+  $('#sheets').innerHTML='<div class="hint">Cliente eliminado.<br>Elegí otro de la lista.</div>';renderList();
+};
+
+/* ---------- hojas ---------- */
+function open(id,focus){
+  collect();cur=data.clients.find(c=>c.id===id);
+  $('#head').hidden=false;$('#title').textContent=cur.name;
+  const box=$('#sheets');box.innerHTML='';box.scrollTop=0;
+  cur.pages.forEach(h=>box.appendChild(makePage(h)));
+  renumber();renderList();
+  if(focus)focusStart(box.querySelector('.body'));
+}
+function makePage(html){
+  const p=document.createElement('div');p.className='page';
+  p.innerHTML='<div class="body" contenteditable="true" spellcheck="true"></div><span class="num"></span>';
+  const b=p.querySelector('.body');b.innerHTML=html||BLANK;
+  b.addEventListener('input',()=>{normalize(b);reflow(b);save()});
+  b.addEventListener('keydown',onKey);
+  return p;
+}
+function renumber(){const n=document.querySelectorAll('.page');n.forEach((p,i)=>p.querySelector('.num').textContent=`Hoja ${i+1} de ${n.length}`)}
+function normalize(b){
+  [...b.childNodes].forEach(n=>{if(n.nodeType===3&&n.textContent.trim()){const d=document.createElement('div');n.replaceWith(d);d.appendChild(n)}});
+  if(!b.children.length)b.innerHTML='<div><br></div>';
+}
+function nextBody(b,create){
+  let p=b.parentElement.nextElementSibling;
+  while(p&&!p.classList.contains('page'))p=p.nextElementSibling;
+  if(!p&&create){p=makePage(BLANK);b.parentElement.after(p);renumber()}
+  return p&&p.querySelector('.body');
+}
+function focusStart(b){
+  b.focus();const r=document.createRange(),t=b.querySelector('li,div,p')||b;
+  r.selectNodeContents(t);r.collapse(true);const s=getSelection();s.removeAllRanges();s.addRange(r);
+  b.parentElement.scrollIntoView({block:'center'});
+}
+function reflow(b){
+  while(b.scrollHeight>b.clientHeight+1&&b.children.length){
+    const nb=nextBody(b,true);
+    let last=b.lastElementChild,moved;
+    if(last.tagName==='UL'&&last.children.length>1){
+      moved=last.lastElementChild;
+      let ul=nb.firstElementChild;
+      if(!ul||ul.tagName!=='UL'){ul=document.createElement('ul');nb.prepend(ul)}
+      ul.prepend(moved);
+    }else{moved=last;nb.prepend(moved)}
+    const s=getSelection();
+    if(s.anchorNode&&moved.contains(s.anchorNode)){
+      nb.focus();const r=document.createRange();r.selectNodeContents(moved);r.collapse(false);
+      s.removeAllRanges();s.addRange(r);moved.scrollIntoView({block:'center'});
+    }
+    reflow(nb);
+  }
+}
+function newPageFrom(b){
+  const nb=nextBody(b,true);focusStart(nb);save();
+}
+function onKey(e){
+  const b=e.currentTarget;
+  if(e.key==='Enter'&&e.ctrlKey){e.preventDefault();newPageFrom(b);return}
+  if(e.key==='Enter'&&!e.shiftKey){
+    const s=getSelection();if(!s.rangeCount)return;
+    let n=s.anchorNode;n=n.nodeType===3?n.parentElement:n;
+    const blk=n.closest('li')||n.closest('.body > *');
+    const lastBlk=b.lastElementChild&&(b.lastElementChild.tagName==='UL'?b.lastElementChild.lastElementChild:b.lastElementChild);
+    if(blk&&blk===lastBlk&&blk.textContent.trim()===''&&b.children.length>0&&(b.children.length>1||b.firstElementChild.children.length>1)){
+      e.preventDefault();
+      const ul=blk.parentElement;blk.remove();if(ul.tagName==='UL'&&!ul.children.length)ul.remove();
+      newPageFrom(b);
+    }
+  }
+}
+
+/* ---------- inicio ---------- */
+window.api.load().then(d=>{data=d&&d.clients?d:{clients:[]};renderList()});
+</script>
+</body></html>
